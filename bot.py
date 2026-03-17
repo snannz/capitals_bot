@@ -1,9 +1,26 @@
 import logging
 import random
 import os
-TOKEN = os.environ.get('TOKEN')
+import threading
+from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+
+# ========== ВЕБ-СЕРВЕР ДЛЯ RENDER ==========
+app = Flask(__name__)
+
+@app.route('/')
+@app.route('/health')
+def health():
+    return "Bot is running", 200
+
+def run_web():
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+
+# Запускаем веб-сервер в фоновом потоке
+threading.Thread(target=run_web, daemon=True).start()
+# ============================================
 
 # Настройка логирования
 logging.basicConfig(
@@ -12,8 +29,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Данные о странах и столицах по континентам
+# Токен из переменных окружения
+TOKEN = os.environ.get('TOKEN')
+
+# ---------- ПОЛНЫЙ СПИСОК СТРАН И СТОЛИЦ ПО КОНТИНЕНТАМ ----------
 COUNTRIES_DATA = {
+    # ЕВРОПА (44 страны)
     'Европа': {
         'Австрия': 'Вена',
         'Албания': 'Тирана',
@@ -58,11 +79,9 @@ COUNTRIES_DATA = {
         'Чехия': 'Прага',
         'Швейцария': 'Берн',
         'Швеция': 'Стокгольм',
-        'Эстония': 'Таллин',
-        # дополнительно (частично признанные, но часто включаемые)
-        'Косово': 'Приштина',
+        'Эстония': 'Таллин'
     },
-    # ---------- АЗИЯ (49 стран) ----------
+    # АЗИЯ (48 стран)
     'Азия': {
         'Азербайджан': 'Баку',
         'Армения': 'Ереван',
@@ -87,7 +106,7 @@ COUNTRIES_DATA = {
         'Кипр': 'Никосия',
         'Киргизия': 'Бишкек',
         'Китай': 'Пекин',
-        'КНДР (Северная Корея)': 'Пхеньян',
+        'КНДР': 'Пхеньян',
         'Кувейт': 'Эль-Кувейт',
         'Лаос': 'Вьентьян',
         'Ливан': 'Бейрут',
@@ -110,12 +129,9 @@ COUNTRIES_DATA = {
         'Филиппины': 'Манила',
         'Шри-Ланка': 'Шри-Джаяварденепура-Котте',
         'Южная Корея': 'Сеул',
-        'Япония': 'Токио',
-        # дополнительные
-        'Палестина': 'Рамалла (адм.)',
-        'Тайвань': 'Тайбэй',
+        'Япония': 'Токио'
     },
-    # ---------- АФРИКА (54 страны) ----------
+    # АФРИКА (54 страны)
     'Африка': {
         'Алжир': 'Алжир',
         'Ангола': 'Луанда',
@@ -170,9 +186,9 @@ COUNTRIES_DATA = {
         'Эсватини': 'Мбабане',
         'Эфиопия': 'Аддис-Абеба',
         'ЮАР': 'Претория',
-        'Южный Судан': 'Джуба',
+        'Южный Судан': 'Джуба'
     },
- # ---------- СЕВЕРНАЯ АМЕРИКА (23 страны) ----------
+    # СЕВЕРНАЯ АМЕРИКА (23 страны)
     'Северная Америка': {
         'Антигуа и Барбуда': 'Сент-Джонс',
         'Багамы': 'Нассау',
@@ -196,9 +212,9 @@ COUNTRIES_DATA = {
         'Сент-Люсия': 'Кастри',
         'США': 'Вашингтон',
         'Тринидад и Тобаго': 'Порт-оф-Спейн',
-        'Ямайка': 'Кингстон',
+        'Ямайка': 'Кингстон'
     },
-    # ---------- ЮЖНАЯ АМЕРИКА (12 стран) ----------
+    # ЮЖНАЯ АМЕРИКА (12 стран)
     'Южная Америка': {
         'Аргентина': 'Буэнос-Айрес',
         'Боливия': 'Сукре',
@@ -211,9 +227,9 @@ COUNTRIES_DATA = {
         'Суринам': 'Парамарибо',
         'Уругвай': 'Монтевидео',
         'Чили': 'Сантьяго',
-        'Эквадор': 'Кито',
+        'Эквадор': 'Кито'
     },
-    # ---------- АВСТРАЛИЯ И ОКЕАНИЯ (14 стран) ----------
+    # АВСТРАЛИЯ И ОКЕАНИЯ (14 стран)
     'Австралия и Океания': {
         'Австралия': 'Канберра',
         'Вануату': 'Порт-Вила',
@@ -228,9 +244,10 @@ COUNTRIES_DATA = {
         'Соломоновы Острова': 'Хониара',
         'Тонга': 'Нукуалофа',
         'Тувалу': 'Фунафути',
-        'Фиджи': 'Сува',
+        'Фиджи': 'Сува'
     }
 }
+# ---------- КОНЕЦ СПИСКА СТРАН ----------
 
 # Хранилище данных пользователей
 user_data = {}
@@ -289,6 +306,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_answer(query, user_id)
 
 async def show_continents(query):
+    """Показывает кнопки выбора континентов."""
     keyboard = [
         [InlineKeyboardButton("🌍 Европа", callback_data='continent_Европа')],
         [InlineKeyboardButton("🌏 Азия", callback_data='continent_Азия')],
@@ -301,6 +319,7 @@ async def show_continents(query):
     await query.edit_message_text('Выберите континент:', reply_markup=reply_markup)
 
 async def ask_question(query, user_id):
+    """Задает случайный вопрос пользователю."""
     user = user_data.get(user_id)
     if not user:
         await query.edit_message_text("Произошла ошибка. Начните заново с /start")
@@ -336,6 +355,7 @@ async def ask_question(query, user_id):
     )
 
 async def handle_answer(query, user_id):
+    """Проверяет ответ пользователя."""
     user = user_data.get(user_id)
     if not user:
         await query.edit_message_text("Произошла ошибка. Начните заново с /start")
@@ -359,12 +379,14 @@ async def handle_answer(query, user_id):
         await show_results(query, user_id, message)
 
 async def next_question_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик для кнопки 'Следующий вопрос'."""
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
     await ask_question(query, user_id)
 
 async def show_results(query, user_id, prev_message=""):
+    """Показывает результаты викторины."""
     user = user_data.get(user_id)
     if not user:
         await query.edit_message_text("Произошла ошибка. Начните заново с /start")
@@ -385,12 +407,14 @@ async def show_results(query, user_id, prev_message=""):
     )
 
 async def end_quiz_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик для досрочного завершения викторины."""
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
     await show_results(query, user_id)
 
 def main():
+    """Запуск бота."""
     application = Application.builder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(button_handler, pattern='^(continent_|start_quiz|back_to_continents|answer_)'))
